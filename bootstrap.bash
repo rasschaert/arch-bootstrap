@@ -1,17 +1,20 @@
 #!/bin/bash
 
+################################################################################
+#### Dialog function                                                        ####
+################################################################################
 bootstrapper_dialog() {
     DIALOG_RESULT=$(whiptail --clear --backtitle "Arch bootstrapper" "$@" 3>&1 1>&2 2>&3)
 }
 
-#################
-#### Welcome ####
-#################
+################################################################################
+#### Welcome                                                                ####
+################################################################################
 bootstrapper_dialog --title "Welcome" --msgbox "\nWelcome to Kenny's Arch Linux bootstrapper." 10 60
 
-##############################
-#### UEFI / BIOS detection ###
-##############################
+################################################################################
+#### UEFI / BIOS detection                                                  ####
+################################################################################
 efivar -l >/dev/null 2>&1
 
 if [[ $? -eq 0 ]]; then
@@ -27,35 +30,35 @@ fi
 bootstrapper_dialog --title "UEFI or BIOS" --radiolist "${UEFI_BIOS_text}\nPress <Enter> to accept." 10 40 2 1 UEFI "$UEFI_radio" 2 BIOS "$BIOS_radio"
 [[ $DIALOG_RESULT -eq 1 ]] && UEFI=1 || UEFI=0
 
-#################
-#### Prompts ####
-#################
+################################################################################
+#### Prompts                                                                ####
+################################################################################
 bootstrapper_dialog --title "Hostname" --inputbox "\nPlease enter a name for this host.\n" 10 60
 hostname="$DIALOG_RESULT"
 
-##########################
+################################################################################
 #### Password prompts ####
-##########################
+################################################################################
 bootstrapper_dialog --title "Disk encryption" --passwordbox "\nPlease enter a strong passphrase for the full disk encryption.\n" 10 60
 encryption_passphrase="$DIALOG_RESULT"
 
 bootstrapper_dialog --title "Root password" --passwordbox "\nPlease enter a strong password for the root user.\n" 10 60
 root_password="$DIALOG_RESULT"
 
-#################
-#### Warning ####
-#################
+################################################################################
+#### Warning                                                                ####
+################################################################################
 bootstrapper_dialog --title "WARNING" --msgbox "\nThis script will NUKE /dev/sda from orbit.\nPress <Enter> to continue or <Esc> to cancel.\n" 10 60
 [[ $? -ne 0 ]] && (bootstrapper_dialog --title "Cancelled" --msgbox "\nScript was cancelled at your request." 5 40; exit 0)
 
-##########################
-#### reset the screen ####
-##########################
+################################################################################
+#### reset the screen                                                       ####
+################################################################################
 reset
 
-#########################################
-#### Nuke and set up disk partitions ####
-#########################################
+################################################################################
+#### Nuke and set up disk partitions                                        ####
+################################################################################
 echo "Zapping disk"
 sgdisk --zap-all /dev/sda
 
@@ -89,10 +92,9 @@ echo "Creating XFS file systems on top of logical volumes"
 yes | mkfs.xfs /dev/mapper/vg00-lvroot
 yes | mkfs.xfs /dev/mapper/vg00-lvhome
 
-######################
-#### Install Arch ####
-######################
-
+################################################################################
+#### Install Arch                                                           ####
+################################################################################
 mount /dev/vg00/lvroot /mnt
 mkdir /mnt/{boot,home}
 mount /dev/sda1 /mnt/boot
@@ -102,9 +104,9 @@ yes '' | pacstrap -i /mnt base base-devel
 
 genfstab -U -p /mnt >> /mnt/etc/fstab
 
-###############################
-#### Configure base system ####
-###############################
+################################################################################
+#### Configure base system                                                  ####
+################################################################################
 arch-chroot /mnt /bin/bash <<EOF
 echo "Setting and generating locale"
 echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
@@ -125,9 +127,9 @@ echo "Setting root password"
 echo "root:${root_password}" | chpasswd
 EOF
 
-#############################
-#### Install boot loader ####
-#############################
+################################################################################
+#### Install boot loader                                                    ####
+################################################################################
 if [[ $UEFI -eq 1 ]]; then
 arch-chroot /mnt /bin/bash <<EOF
 echo "Installing Gummiboot boot loader"
@@ -145,12 +147,11 @@ arch-chroot /mnt /bin/bash <<EOF
     echo "Installing Grub boot loader"
     pacman --noconfirm -S grub
     grub-install --target=i386-pc --recheck /dev/sda
-    sed -i 's|^GRUB_CMDLINE_LINUX_DEFAULT.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet cryptdevice=/dev/partition:MyStorage root=/dev/mapper/MyStorage-rootvol"|' /etc/default/grub
+    sed -i 's|^GRUB_CMDLINE_LINUX_DEFAULT.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet cryptdevice=/dev/sda2:vg00 root=/dev/mapper/vg00-lvroot"|' /etc/default/grub
     grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 fi
 
-#################
-#### The end ####
-#################
-
+################################################################################
+#### The end                                                                ####
+################################################################################
