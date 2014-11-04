@@ -1,13 +1,13 @@
 #!/bin/bash
 
 bootstrapper_dialog() {
-    DIALOG_RESULT=$(dialog --clear --stdout --backtitle "Arch bootstrapper" --no-shadow "$@" 2>/dev/null)
+    DIALOG_RESULT=$(whiptail --clear --backtitle "Arch bootstrapper" "$@" 3>&1 1>&2 2>&3)
 }
 
 #################
 #### Welcome ####
 #################
-bootstrapper_dialog --title "Welcome" --msgbox "\nWelcome to Kenny's Arch Linux bootstrapper.\n" 6 60
+bootstrapper_dialog --title "Welcome" --msgbox "\nWelcome to Kenny's Arch Linux bootstrapper." 10 60
 
 ##############################
 #### UEFI / BIOS detection ###
@@ -24,29 +24,29 @@ else
     BIOS_radio="on"
 fi
 
-bootstrapper_dialog --title "UEFI or BIOS" --radiolist "${UEFI_BIOS_text}\nPress <Enter> to accept." 10 30 2 1 UEFI "$UEFI_radio" 2 BIOS "$BIOS_radio"
+bootstrapper_dialog --title "UEFI or BIOS" --radiolist "${UEFI_BIOS_text}\nPress <Enter> to accept." 10 40 2 1 UEFI "$UEFI_radio" 2 BIOS "$BIOS_radio"
 [[ $DIALOG_RESULT -eq 1 ]] && UEFI=1 || UEFI=0
 
 #################
 #### Prompts ####
 #################
-bootstrapper_dialog --title "Hostname" --inputbox "Please enter a name for this host.\n" 8 60
+bootstrapper_dialog --title "Hostname" --inputbox "\nPlease enter a name for this host.\n" 10 60
 hostname="$DIALOG_RESULT"
 
 ##########################
 #### Password prompts ####
 ##########################
-bootstrapper_dialog --title "Disk encryption" --passwordbox "Please enter a strong passphrase for the full disk encryption.\n" 8 60
+bootstrapper_dialog --title "Disk encryption" --passwordbox "\nPlease enter a strong passphrase for the full disk encryption.\n" 10 60
 encryption_passphrase="$DIALOG_RESULT"
 
-bootstrapper_dialog --title "Root password" --passwordbox "Please enter a strong password for the root user.\n" 8 60
+bootstrapper_dialog --title "Root password" --passwordbox "\nPlease enter a strong password for the root user.\n" 10 60
 root_password="$DIALOG_RESULT"
 
 #################
 #### Warning ####
 #################
-bootstrapper_dialog --title "WARNING" --msgbox "This script will NUKE /dev/sda from orbit.\nPress <Enter> to continue or <Esc> to cancel.\n" 6 60
-[[ $? -ne 0 ]] && (bootstrapper_dialog --title "Cancelled" --msgbox "Script was cancelled at your request." 5 40; exit 0)
+bootstrapper_dialog --title "WARNING" --msgbox "\nThis script will NUKE /dev/sda from orbit.\nPress <Enter> to continue or <Esc> to cancel.\n" 10 60
+[[ $? -ne 0 ]] && (bootstrapper_dialog --title "Cancelled" --msgbox "\nScript was cancelled at your request." 5 40; exit 0)
 
 ##########################
 #### reset the screen ####
