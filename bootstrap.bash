@@ -5,11 +5,13 @@
 ################################################################################
 bootstrapper_dialog() {
     DIALOG_RESULT=$(whiptail --clear --backtitle "Arch bootstrapper" "$@" 3>&1 1>&2 2>&3)
+    DIALOG_CODE=$?
 }
 
 ################################################################################
 #### Welcome                                                                ####
 ################################################################################
+clear
 bootstrapper_dialog --title "Welcome" --msgbox "\nWelcome to Kenny's Arch Linux bootstrapper." 10 60
 
 ################################################################################
@@ -37,9 +39,9 @@ bootstrapper_dialog --title "Hostname" --inputbox "\nPlease enter a name for thi
 hostname="$DIALOG_RESULT"
 
 ################################################################################
-#### Password prompts ####
+#### Password prompts                                                       ####
 ################################################################################
-bootstrapper_dialog --title "Disk encryption" --passwordbox "\nPlease enter a strong passphrase for the full disk encryption.\n" 10 60
+bootstrapper_dialog --title "Disk encryption" --passwordbox "\nPlease enter a strong passphrase for the full disk encryption.\nLeave blank if you don't want encryption.\n" 10 60
 encryption_passphrase="$DIALOG_RESULT"
 
 bootstrapper_dialog --title "Root password" --passwordbox "\nPlease enter a strong password for the root user.\n" 10 60
@@ -48,8 +50,12 @@ root_password="$DIALOG_RESULT"
 ################################################################################
 #### Warning                                                                ####
 ################################################################################
-bootstrapper_dialog --title "WARNING" --msgbox "\nThis script will NUKE /dev/sda from orbit.\nPress <Enter> to continue or <Esc> to cancel.\n" 10 60
-[[ $? -ne 0 ]] && (bootstrapper_dialog --title "Cancelled" --msgbox "\nScript was cancelled at your request." 5 40; exit 0)
+bootstrapper_dialog --title "WARNING" --yesno "\nThis script will NUKE /dev/sda from orbit.\nPress <Enter> to continue or <Esc> to cancel.\n" 10 60
+clear
+if [[ $DIALOG_CODE -eq 1 ]]; then
+    bootstrapper_dialog --title "Cancelled" --msgbox "\nScript was cancelled at your request." 10 60
+    exit 0
+fi
 
 ################################################################################
 #### reset the screen                                                       ####
@@ -61,6 +67,10 @@ reset
 ################################################################################
 echo "Zapping disk"
 sgdisk --zap-all /dev/sda
+[[ $UEFI -eq 0 ]] && printf "r\ng\nw\ny\n" | gdisk /dev/sda
+
+# Hope the kernel can read the new partition table. Partprobe usually fails...
+blockdev --rereadpt /dev/sda
 
 echo "Creating /dev/sda1"
 if [[ $UEFI -eq 1 ]]; then
@@ -68,7 +78,7 @@ if [[ $UEFI -eq 1 ]]; then
     yes | mkfs.fat -F32 /dev/sda1
 else
     printf "n\np\n1\n\n+200M\nw\n" | fdisk /dev/sda
-    yes | mkfs.xfs /dev/sda1
+    yes | mkfs.xfs -f /dev/sda1
 fi
 
 echo "Creating /dev/sda2"
@@ -78,19 +88,26 @@ else
     printf "n\np\n2\n\n\nt\n2\n8e\nw\n" | fdisk /dev/sda
 fi
 
-echo "Setting up encryption"
-printf "%s" "$encryption_passphrase" | cryptsetup luksFormat /dev/sda2 -
-printf "%s" "$encryption_passphrase" | cryptsetup open --type luks /dev/sda2 lvm -
+if [[ ! -z $encryption_passphrase ]]; then
+    echo "Setting up encryption"
+    printf "%s" "$encryption_passphrase" | cryptsetup luksFormat /dev/sda2 -
+    printf "%s" "$encryption_passphrase" | cryptsetup open --type luks /dev/sda2 lvm -
+    cryptdevice_boot_param="cryptdevice=/dev/sda2:vg00 "
+    encrypt_mkinitcpio_hook="encrypt "
+    physical_volume="/dev/mapper/lvm"
+else
+    physical_volume="/dev/sda2"
+fi
 
 echo "Setting up LVM"
-pvcreate /dev/mapper/lvm
-vgcreate vg00 /dev/mapper/lvm
+pvcreate $physical_volume
+vgcreate vg00 $physical_volume
 lvcreate -L 20G vg00 -n lvroot
 lvcreate -l +100%FREE vg00 -n lvhome
 
 echo "Creating XFS file systems on top of logical volumes"
-yes | mkfs.xfs /dev/mapper/vg00-lvroot
-yes | mkfs.xfs /dev/mapper/vg00-lvhome
+yes | mkfs.xfs -f /dev/mapper/vg00-lvroot
+yes | mkfs.xfs -f /dev/mapper/vg00-lvhome
 
 ################################################################################
 #### Install Arch                                                           ####
@@ -117,11 +134,11 @@ echo "Setting time zone"
 ln -s /usr/share/zoneinfo/Europe/Brussels /etc/localtime
 echo "Setting hostname"
 echo $hostname > /etc/hostname
-sed -i "/localhost/s/$/ $hostname/" /etc/hosts
+sed -i '/localhost/s/$'"/ $hostname/" /etc/hosts
 echo "Installing wifi packages"
 pacman --noconfirm -S iw wpa_supplicant dialog wpa_actiond
 echo "Generating initramfs"
-sed -i 's/^HOOKS.*/HOOKS="base udev autodetect modconf block encrypt lvm2 filesystems keyboard fsck"/' /etc/mkinitcpio.conf
+sed -i "s/^HOOKS.*/HOOKS=\"base udev autodetect modconf block ${encrypt_mkinitcpio_hook}lvm2 filesystems keyboard fsck\"/" /etc/mkinitcpio.conf
 mkinitcpio -p linux
 echo "Setting root password"
 echo "root:${root_password}" | chpasswd
@@ -139,7 +156,7 @@ cat << GRUB > /boot/loader/entries/arch.conf
 title          Arch Linux
 linux          /vmlinuz-linux
 initrd         /initramfs-linux.img
-options        cryptdevice=/dev/sda2:vg00 root=/dev/mapper/vg00-lvroot rw
+options        ${cryptdevice_boot_param}root=/dev/mapper/vg00-lvroot rw
 GRUB
 EOF
 else
@@ -147,7 +164,7 @@ arch-chroot /mnt /bin/bash <<EOF
     echo "Installing Grub boot loader"
     pacman --noconfirm -S grub
     grub-install --target=i386-pc --recheck /dev/sda
-    sed -i 's|^GRUB_CMDLINE_LINUX_DEFAULT.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet cryptdevice=/dev/sda2:vg00 root=/dev/mapper/vg00-lvroot"|' /etc/default/grub
+    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT.*|GRUB_CMDLINE_LINUX_DEFAULT=\"quiet ${cryptdevice_boot_param}root=/dev/mapper/vg00-lvrootg\"|" /etc/default/grub
     grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 fi
@@ -155,3 +172,4 @@ fi
 ################################################################################
 #### The end                                                                ####
 ################################################################################
+printf "The script has completed bootstrapping Arch Linux.\n\nTake a minute to scroll up and check for errors (using shift+pgup).\nIf it looks good you can reboot.\n"
