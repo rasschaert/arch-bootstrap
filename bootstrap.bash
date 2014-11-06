@@ -41,10 +41,10 @@ hostname="$DIALOG_RESULT"
 ################################################################################
 #### Password prompts                                                       ####
 ################################################################################
-bootstrapper_dialog --title "Disk encryption" --passwordbox "\nPlease enter a strong passphrase for the full disk encryption.\nLeave blank if you don't want encryption.\n" 10 60
+bootstrapper_dialog --title "Disk encryption" --passwordbox "\nEnternter a strong passphrase for the disk encryption.\nLeave blank if you don't want encryption.\n" 10 60
 encryption_passphrase="$DIALOG_RESULT"
 
-bootstrapper_dialog --title "Root password" --passwordbox "\nPlease enter a strong password for the root user.\n" 10 60
+bootstrapper_dialog --title "Root password" --passwordbox "\nEnter a strong password for the root user.\n" 10 60
 root_password="$DIALOG_RESULT"
 
 ################################################################################
@@ -100,7 +100,7 @@ else
 fi
 
 echo "Setting up LVM"
-pvcreate $physical_volume
+pvcreate --force $physical_volume
 vgcreate vg00 $physical_volume
 lvcreate -L 20G vg00 -n lvroot
 lvcreate -l +100%FREE vg00 -n lvhome
@@ -164,7 +164,7 @@ arch-chroot /mnt /bin/bash <<EOF
     echo "Installing Grub boot loader"
     pacman --noconfirm -S grub
     grub-install --target=i386-pc --recheck /dev/sda
-    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT.*|GRUB_CMDLINE_LINUX_DEFAULT=\"quiet ${cryptdevice_boot_param}root=/dev/mapper/vg00-lvrootg\"|" /etc/default/grub
+    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT.*|GRUB_CMDLINE_LINUX_DEFAULT=\"quiet ${cryptdevice_boot_param}root=/dev/mapper/vg00-lvroot\"|" /etc/default/grub
     grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 fi
